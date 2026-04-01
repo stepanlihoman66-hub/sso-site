@@ -186,13 +186,31 @@ app.get('/chat-tuman', (req, res) => {
 // Socket.io
 require('./sockets/chat')(io);
 
-// Database sync and server start
+// ============ ЗАПУСК СЕРВЕРА С ПОВТОРНЫМИ ПОПЫТКАМИ ============
 const PORT = process.env.PORT || 3000;
+const isProduction = process.env.NODE_ENV === 'production';
 
-sequelize.sync({ alter: false }).then(() => {
-    server.listen(PORT, () => {
-        console.log(`Server running on http://localhost:${PORT}`);
-    });
-}).catch(err => {
-    console.error('Unable to connect to database:', err);
-});
+async function startServer() {
+    let retries = 5;
+    while (retries) {
+        try {
+            await sequelize.authenticate();
+            console.log('✅ База данных подключена успешно');
+            
+            await sequelize.sync({ alter: false });
+            console.log('✅ Синхронизация моделей завершена');
+            
+            server.listen(PORT, () => {
+                console.log(`🚀 Server running on http://localhost:${PORT}`);
+            });
+            break;
+        } catch (err) {
+            console.error(`❌ Ошибка подключения к БД. Осталось попыток: ${retries - 1}`);
+            console.error(err.message);
+            retries -= 1;
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+    }
+}
+
+startServer();
