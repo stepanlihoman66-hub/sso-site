@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Чат - ССО</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <%- include('partials/header', { user: user }) %>
+    
+    <div class="chat-container">
+        <div class="chat-header">
+            <span>💬 Общий чат</span>
+            <div class="chat-header-right">
+                <button id="privateBtn" class="settings-btn" title="Личные сообщения">💬 ЛС</button>
+                <button id="notificationSettingsBtn" class="settings-btn" title="Настройки уведомлений">🔔</button>
+                <span id="status" class="status-offline">● Подключение...</span>
+            </div>
+        </div>
+        
+        <div class="chat-messages" id="messages"></div>
+        
+        <div class="chat-input-area">
+            <div class="chat-toolbar">
+                <button type="button" class="chat-tool-btn" id="imageBtn">📷 Фото</button>
+                <button type="button" class="chat-tool-btn" id="fileBtn">📎 Файл</button>
+            </div>
+            
+            <div id="replyPreview" class="reply-preview" style="display: none;">
+                <div class="reply-preview-content">
+                    <span>↩️ Ответ на сообщение:</span>
+                    <span id="replyText" class="reply-text"></span>
+                    <button type="button" class="remove-reply" onclick="cancelReply()">✖</button>
+                </div>
+            </div>
+            
+            <div class="chat-input-wrapper">
+                <textarea id="messageInput" placeholder="Введите сообщение... Используйте @ для упоминания" rows="2"></textarea>
+                <button id="sendButton">📤 Отправить</button>
+            </div>
+            
+            <div id="filePreview" class="file-preview" style="display: none;">
+                <div class="file-preview-content">
+                    <span id="fileName"></span>
+                    <button type="button" class="remove-file" onclick="removeFile()">✖</button>
+                </div>
+            </div>
+            
+            <input type="file" id="fileInput" style="display: none;">
+        </div>
+        
+        <div id="mentionList" class="mention-list" style="display: none;"></div>
+        
+        <!-- Модальное окно личных сообщений -->
+        <div id="privateModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>💬 Личные сообщения</h3>
+                    <button class="modal-close" onclick="closePrivateModal()">✖</button>
+                </div>
+                <div class="modal-body">
+                    <div class="users-list" id="usersList"></div>
+                    <div class="private-chat-area" id="privateChatArea" style="display: none;">
+                        <div class="private-chat-header" id="privateChatHeader">
+                            <div class="private-chat-user">
+                                <strong id="privateChatName"></strong>
+                            </div>
+                        </div>
+                        <div class="private-messages" id="privateMessages"></div>
+                        <div class="private-input">
+                            <textarea id="privateInput" placeholder="Введите личное сообщение..." rows="2"></textarea>
+                            <button id="sendPrivateBtn">Отправить</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Модальное окно настроек уведомлений -->
+        <div id="notificationModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>🔔 Настройки уведомлений</h3>
+                    <button class="modal-close" onclick="closeNotificationModal()">✖</button>
+                </div>
+                <div class="modal-body">
+                    <div class="notification-settings">
+                        <label class="setting-option"><input type="radio" name="notificationMode" value="all" checked> 🔔 Все уведомления</label>
+                        <label class="setting-option"><input type="radio" name="notificationMode" value="mentions"> 🔔 Только @упоминания и ответы</label>
+                        <label class="setting-option"><input type="radio" name="notificationMode" value="off"> 🔕 Отключить уведомления</label>
+                        <div class="sound-setting"><label><input type="checkbox" id="soundEnabled" checked> 🔊 Звук уведомлений</label></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // ============ ПЕРЕМЕННЫЕ ============
+        const socket = io();
+        const messagesDiv = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const imageBtn = document.getElementById('imageBtn');
+        const fileBtn = document.getElementById('fileBtn');
+        const privateBtn = document.getElementById('privateBtn');
+        const fileInput = document.getElementById('fileInput');
+        const filePreview = document.getElementById('filePreview');
+        const fileNameSpan = document.getElementById('fileName');
+        const statusSpan = document.getElementById('status');
+        const mentionList = document.getElementById('mentionList');
+        const replyPreview = document.getElementById('replyPreview');
+        const replyText = document.getElementById('replyText');
+        
+        let pendingFile = null, pendingFileName = null, pendingFileType = null;
+        let currentUserId = parseInt('<%= user.id %>');
+        let currentUserCallsign = '<%= user.callsign %>';
+        let isAdmin = <%= (user.role === 'admin' || user.role === 'superadmin') %>;
+        let usersList = [];
+        let currentReplyTo = null;
+        let currentPrivateChatWith = null;
+        let notificationMode = localStorage.getItem('notificationMode') || 'all';
+        let soundEnabled = localStorage.getItem('soundEnabled') !== 'false';
+        
+        // ============ ОТКРЫТИЕ ЛИЧНОГО ЧАТА ИЗ ПРОФИЛЯ ============
+        var privateWith = '<%= typeof privateWith !== "undefined" ? privateWith : "" %>';
+        if (privateWith && privateWith !== 'null' && privateWith !== '') {
+            setTimeout(() => {
+                document.getElementById('privateBtn').click();
+                setTimeout(() => {
+                    document.querySelector('.user-item[data-id="' + privateWith + '"]')?.click();
+                }, 800);
+            }, 500);
+        }
+        
+        // ============ УВЕДОМЛЕНИЯ ============
+        function playNotificationSound() {
+            if (soundEnabled) {
+                try {
+                    const audio = new Audio();
+                    audio.src = 'data:audio/wav;base64,U3RlYWx0aCBub3RpZmljYXRpb24gc291bmQ=';
+                    audio.play().catch(e => {});
+                } catch(e) {}
+            }
+        }
+        
+        function showBrowserNotification(title, body, icon) {
+            if (Notification.permission === 'granted') {
+                new Notification(title, { body, icon });
+            } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission();
+            }
+        }
+        
+        // ============ ЗАГРУЗКА ПОЛЬЗОВАТЕЛЕЙ ============
+        async function loadUsers() {
+            try {
+                let response = await fetch('/api/users');
+                usersList = await response.json();
+            } catch(e) { console.error(e); }
+        }
+        
+        // ============ УПОМИНАНИЯ ============
+        function handleMentions(input) {
+            let cursorPos = input.selectionStart, text = input.value, beforeCursor = text.substring(0, cursorPos), lastAt = beforeCursor.lastIndexOf('@');
+            if (lastAt !== -1 && (lastAt === 0 || text[lastAt-1] === ' ' || text[lastAt-1] === '\n')) {
+                let searchTerm = beforeCursor.substring(lastAt + 1);
+                let filteredUsers = usersList.filter(u => u.id !== currentUserId && u.callsign.toLowerCase().includes(searchTerm.toLowerCase()));
+                if (filteredUsers.length > 0 && searchTerm.length > 0) {
+                    mentionList.innerHTML = '';
+                    filteredUsers.forEach(u => {
+                        let div = document.createElement('div');
+                        div.className = 'mention-item';
+                        div.innerHTML = u.unitPrefix + ' | "' + u.callsign + '"';
+                        div.onclick = () => {
+                            input.value = text.substring(0, lastAt) + '@' + u.callsign + ' ' + text.substring(cursorPos);
+                            mentionList.style.display = 'none';
+                            input.focus();
+                        };
+                        mentionList.appendChild(div);
+                    });
+                    mentionList.style.display = 'block';
+                    let rect = input.getBoundingClientRect();
+                    mentionList.style.left = rect.left + 10 + 'px';
+                    mentionList.style.bottom = (window.innerHeight - rect.bottom + 10) + 'px';
+                    return;
+                }
+            }
+            mentionList.style.display = 'none';
+        }
+        
+        messageInput.addEventListener('input', () => handleMentions(messageInput));
+        messageInput.addEventListener('keydown', () => handleMentions(messageInput));
+        document.addEventListener('click', (e) => {
+            if (mentionList && !mentionList.contains(e.target) && e.target !== messageInput) mentionList.style.display = 'none';
+        });
+        
+        // ============ ОТВЕТЫ ============
+        window.replyToMessage = function(msg) {
+            currentReplyTo = msg;
+            replyText.innerText = msg.User.callsign + ': ' + (msg.content.substring(0, 50) || '[медиа]');
+            replyPreview.style.display = 'block';
+            messageInput.focus();
+        };
+        window.cancelReply = function() {
+            currentReplyTo = null;
+            replyPreview.style.display = 'none';
+        };
+        
+        function getMentionsFromText(text) {
+            let mentions = [], regex = /@([^\s]+)/g, match;
+            while ((match = regex.exec(text)) !== null) {
+                let u = usersList.find(u => u.callsign === match[1]);
+                if (u) mentions.push(u.id);
+            }
+            return mentions;
+        }
+        
+        // ============ ОТПРАВКА СООБЩЕНИЙ ============
+        function sendMessageWithOptions(recipientId) {
+            let message = messageInput.value.trim();
+            if (!message && !pendingFile) return;
+            let mentions = getMentionsFromText(message);
+            if (pendingFile) {
+                if (pendingFileType === 'image') {
+                    socket.emit('send image', { 
+                        message, 
+                        imageUrl: pendingFile, 
+                        recipientId: recipientId || null, 
+                        replyToId: currentReplyTo?.id, 
+                        mentions: JSON.stringify(mentions) 
+                    });
+                } else {
+                    socket.emit('send file', { 
+                        message, 
+                        fileUrl: pendingFile, 
+                        fileName: pendingFileName, 
+                        recipientId: recipientId || null, 
+                        replyToId: currentReplyTo?.id, 
+                        mentions: JSON.stringify(mentions) 
+                    });
+                }
+                removeFile();
+            } else if (message) {
+                socket.emit('send message', { 
+                    message, 
+                    recipientId: recipientId || null, 
+                    replyToId: currentReplyTo?.id, 
+                    mentions: JSON.stringify(mentions) 
+                });
+            }
+            messageInput.value = '';
+            cancelReply();
+        }
+        
+        // ============ ДОБАВЛЕНИЕ СООБЩЕНИЙ ============
+        function addMessage(msg) {
+            let el = document.createElement('div');
+            el.className = 'chat-message';
+            el.setAttribute('data-message-id', msg.id);
+            let mediaHtml = msg.imageUrl ? `<div class="message-image"><img src="${msg.imageUrl}" onclick="window.open(this.src)"></div>` : (msg.fileUrl ? `<div class="message-file"><a href="${msg.fileUrl}" download="${msg.fileName}" target="_blank">📎 ${msg.fileName}</a></div>` : '');
+            let canDelete = (currentUserId === msg.User.id) || isAdmin;
+            let replyHtml = msg.ReplyTo ? `<div class="message-reply">↩️ Ответ: <span class="reply-author">${msg.ReplyTo.User.callsign}:</span> ${(msg.ReplyTo.content || '[медиа]').substring(0, 50)}</div>` : '';
+            el.innerHTML = `<img src="${msg.User.avatar}" class="avatar-tiny"><div class="message-content"><div class="message-header"><a href="/profile/${msg.User.id}" class="message-author">${msg.User.unitPrefix} | "${msg.User.callsign}"</a><span class="message-date">${new Date(msg.createdAt).toLocaleString()}</span><button class="reply-btn" onclick="replyToMessage(${JSON.stringify(msg).replace(/"/g, '&quot;')})">↩️</button>${canDelete ? `<button class="delete-message" data-id="${msg.id}">🗑️</button>` : ''}</div>${replyHtml}<div class="message-text">${escapeHtml(msg.content)}</div>${mediaHtml}</div>`;
+            messagesDiv.appendChild(el);
+            if (canDelete) el.querySelector('.delete-message').addEventListener('click', () => { if (confirm('Удалить?')) socket.emit('delete message', { messageId: msg.id }); });
+            scrollToBottom();
+        }
+        
+        function addPrivateMessage(msg) {
+            let isOwn = msg.User.id === currentUserId;
+            let msgDiv = document.createElement('div');
+            msgDiv.className = 'private-message ' + (isOwn ? 'own-message' : 'other-message');
+            msgDiv.innerHTML = `<strong>${msg.User.callsign}:</strong> ${escapeHtml(msg.content)}<small>${new Date(msg.createdAt).toLocaleString()}</small>`;
+            privateMessages.appendChild(msgDiv);
+            privateMessages.scrollTop = privateMessages.scrollHeight;
+        }
+        
+        function showNotification(msg) {
+            if (notificationMode === 'all' && msg.User.id !== currentUserId) {
+                playNotificationSound();
+                showBrowserNotification(msg.User.callsign, msg.content.substring(0, 100), msg.User.avatar);
+            }
+        }
+        
+        // ============ СОКЕТ СОБЫТИЯ ============
+        socket.on('connect', () => {
+            statusSpan.innerHTML = '● Подключено';
+            statusSpan.className = 'status-online';
+            console.log('✅ Сокет подключен');
+        });
+        
+        socket.on('disconnect', () => {
+            statusSpan.innerHTML = '● Отключено';
+            statusSpan.className = 'status-offline';
+            console.log('❌ Сокет отключен');
+        });
+        
+        socket.on('load messages', (msgs) => {
+            messagesDiv.innerHTML = '';
+            msgs.forEach(m => addMessage(m));
+            scrollToBottom();
+            console.log(`📨 Загружено ${msgs.length} сообщений`);
+        });
+        
+        socket.on('new message', (msg) => {
+            addMessage(msg);
+            showNotification(msg);
+        });
+        
+        socket.on('private message', (msg) => {
+            if (currentPrivateChatWith === msg.User.id) {
+                addPrivateMessage(msg);
+            }
+            if (msg.User.id !== currentUserId) {
+                playNotificationSound();
+                showBrowserNotification('Личное от ' + msg.User.callsign, msg.content.substring(0, 100), msg.User.avatar);
+            }
+        });
+        
+        socket.on('private messages loaded', (data) => {
+            if (data.with === currentPrivateChatWith) {
+                privateMessages.innerHTML = '';
+                if (!data.messages || data.messages.length === 0) {
+                    privateMessages.innerHTML = '<div class="no-messages">📭 Нет сообщений. Напишите что-нибудь...</div>';
+                } else {
+                    data.messages.forEach(msg => addPrivateMessage(msg));
+                    privateMessages.scrollTop = privateMessages.scrollHeight;
+                }
+            }
+        });
+        
+        socket.on('message deleted', (data) => {
+            document.querySelector(`.chat-message[data-message-id="${data.messageId}"]`)?.remove();
+        });
+        
+        // ============ ФАЙЛЫ ============
+        function removeFile() {
+            filePreview.style.display = 'none';
+            pendingFile = null;
+            pendingFileName = null;
+        }
+        
+        imageBtn.onclick = () => {
+            fileInput.accept = 'image/*';
+            fileInput.click();
+            pendingFileType = 'image';
+        };
+        
+        fileBtn.onclick = () => {
+            fileInput.accept = '*/*';
+            fileInput.click();
+            pendingFileType = 'file';
+        };
+        
+        fileInput.onchange = (e) => {
+            let file = e.target.files[0];
+            if (!file) return;
+            let reader = new FileReader();
+            reader.onload = (event) => {
+                let url = event.target.result;
+                fileNameSpan.innerHTML = (pendingFileType === 'image' ? '📷 ' : '📎 ') + file.name;
+                filePreview.style.display = 'block';
+                pendingFile = url;
+                pendingFileName = file.name;
+            };
+            reader.readAsDataURL(file);
+            fileInput.value = '';
+        };
+        
+        window.removeFile = removeFile;
+        
+        function sendWithAttachment() { sendMessageWithOptions(); }
+        function escapeHtml(text) { if (!text) return ''; let div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+        function scrollToBottom() { messagesDiv.scrollTop = messagesDiv.scrollHeight; }
+        
+        sendButton.onclick = sendWithAttachment;
+        messageInput.onkeypress = (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendWithAttachment();
+            }
+        };
+        
+        // ============ ЛИЧНЫЕ СООБЩЕНИЯ ============
+        const privateModal = document.getElementById('privateModal');
+        const usersListDiv = document.getElementById('usersList');
+        const privateChatArea = document.getElementById('privateChatArea');
+        const privateMessages = document.getElementById('privateMessages');
+        const privateInput = document.getElementById('privateInput');
+        const sendPrivateBtn = document.getElementById('sendPrivateBtn');
+        
+        privateBtn.onclick = () => {
+            privateModal.style.display = 'flex';
+            loadUsersList();
+        };
+        
+        async function loadUsersList() {
+            try {
+                let response = await fetch('/api/users');
+                let allUsers = await response.json();
+                let filtered = allUsers.filter(u => u.id !== currentUserId);
+                usersListDiv.innerHTML = '';
+                filtered.forEach(u => {
+                    let div = document.createElement('div');
+                    div.className = 'user-item';
+                    div.setAttribute('data-id', u.id);
+                    div.innerHTML = `<img src="${u.avatar}" class="user-avatar-small"><span>${u.unitPrefix} | "${u.callsign}"</span>`;
+                    div.onclick = () => startPrivateChat(u.id, u.callsign);
+                    usersListDiv.appendChild(div);
+                });
+            } catch(err) {
+                console.error('Ошибка загрузки списка пользователей:', err);
+            }
+        }
+        
+        window.startPrivateChat = async function(userId, callsign) {
+            currentPrivateChatWith = userId;
+            document.getElementById('privateChatName').innerHTML = callsign;
+            privateChatArea.style.display = 'block';
+            privateMessages.innerHTML = '<div class="loading-messages">📥 Загрузка истории...</div>';
+            socket.emit('load private messages', { withUserId: userId });
+        };
+        
+        window.closePrivateModal = () => {
+            privateModal.style.display = 'none';
+            privateChatArea.style.display = 'none';
+            currentPrivateChatWith = null;
+        };
+        
+        sendPrivateBtn.onclick = () => {
+            let msg = privateInput.value.trim();
+            if (msg && currentPrivateChatWith) {
+                socket.emit('send message', { 
+                    message: msg, 
+                    recipientId: currentPrivateChatWith 
+                });
+                privateInput.value = '';
+            }
+        };
+        
+        privateInput.onkeypress = (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendPrivateBtn.click();
+            }
+        };
+        
+        // ============ НАСТРОЙКИ УВЕДОМЛЕНИЙ ============
+        const notificationModal = document.getElementById('notificationModal');
+        document.getElementById('notificationSettingsBtn').onclick = () => {
+            notificationModal.style.display = 'flex';
+            document.querySelector(`input[name="notificationMode"][value="${notificationMode}"]`).checked = true;
+            document.getElementById('soundEnabled').checked = soundEnabled;
+        };
+        
+        window.closeNotificationModal = () => notificationModal.style.display = 'none';
+        
+        document.querySelectorAll('input[name="notificationMode"]').forEach(r => r.addEventListener('change', function() {
+            notificationMode = this.value;
+            localStorage.setItem('notificationMode', notificationMode);
+        }));
+        
+        document.getElementById('soundEnabled').addEventListener('change', (e) => {
+            soundEnabled = e.target.checked;
+            localStorage.setItem('soundEnabled', soundEnabled);
+        });
+        
+        // ============ ИНИЦИАЛИЗАЦИЯ ============
+        loadUsers();
+        if (Notification.permission === 'default') Notification.requestPermission();
+        messageInput.focus();
+    </script>
+</body>
+</html>

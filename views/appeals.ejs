@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Обращения - Админ-панель</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <%- include('partials/header', { user: admin }) %>
+    
+    <div class="appeals-container">
+        <h1>Анонимные обращения</h1>
+        
+        <div class="appeals-list">
+            <% if(appeals.length === 0) { %>
+                <p class="no-appeals">Нет обращений</p>
+            <% } else { %>
+                <% for(var i = 0; i < appeals.length; i++) { %>
+                <div class="appeal-card <% if(appeals[i].status === 'new') { %>appeal-new<% } else { %>appeal-read<% } %>">
+                    <div class="appeal-header">
+                        <span class="appeal-status">
+                            <% if(appeals[i].status === 'new') { %>🆕 Новое<% } else { %>📖 Прочитано<% } %>
+                        </span>
+                        <span class="appeal-date">
+                            <%= new Date(appeals[i].createdAt).toLocaleString() %>
+                        </span>
+                    </div>
+                    
+                    <div class="appeal-author-info">
+                        <strong>Отправитель:</strong> 
+                        <%= appeals[i].User.username %>
+                        (<%= appeals[i].User.unitPrefix %> | "<%= appeals[i].User.callsign %>")
+                    </div>
+                    
+                    <div class="appeal-content">
+                        <strong>Текст обращения:</strong>
+                        <p><%= appeals[i].content %></p>
+                    </div>
+                    
+                    <% if(appeals[i].status === 'new') { %>
+                    <form action="/appeals/<%= appeals[i].id %>/read" method="POST">
+                        <button type="submit" class="btn-mark-read">Отметить как прочитанное</button>
+                    </form>
+                    <% } %>
+                </div>
+                <% } %>
+            <% } %>
+        </div>
+    </div>
+    
+    <style>
+        .appeals-container {
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+        .appeal-card {
+            background: rgba(30, 47, 38, 0.95);
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-radius: 8px;
+            border-left: 4px solid #4a7c59;
+        }
+        .appeal-new {
+            border-left-color: #ff9800;
+        }
+        .appeal-read {
+            border-left-color: #4caf50;
+        }
+        .appeal-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+        .appeal-author-info {
+            background: #2c4a3a;
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+        }
+        .appeal-content {
+            margin-bottom: 1rem;
+        }
+        .appeal-content p {
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            background: #1a2f24;
+            border-radius: 4px;
+        }
+        .btn-mark-read {
+            padding: 0.5rem 1rem;
+            background: #4a7c59;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .btn-mark-read:hover {
+            background: #5c9e6b;
+        }
+    </style>
+</body>
+</html>

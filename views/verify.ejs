@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Верификация - ССО</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <%- include('partials/header') %>
+    
+    <div class="verify-container">
+        <div class="verify-card">
+            <h1>Верификация бойца</h1>
+            <p>Для доступа к сайту необходимо указать ссылку на ваше личное дело</p>
+            
+            <form action="/auth/verify" method="POST">
+                <div class="form-group">
+                    <label for="personalFileUrl">Ссылка на личное дело:</label>
+                    <input type="url" name="personalFileUrl" id="personalFileUrl" required 
+                           placeholder="https://example.com/personal-file">
+                </div>
+                <button type="submit">Подтвердить</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

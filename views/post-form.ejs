@@ -1,0 +1,266 @@
+<div class="create-post">
+    <form id="postForm" action="/posts/create" method="POST">
+        <textarea name="content" id="postContent" placeholder="Что нового?" rows="3"></textarea>
+        
+        <!-- Превью фото -->
+        <div id="imagePreview" class="image-preview" style="display: none;">
+            <img id="previewImg" src="" alt="Preview">
+            <button type="button" class="remove-image" onclick="removeImage()">✖</button>
+        </div>
+        
+        <!-- Панель инструментов -->
+        <div class="post-toolbar">
+            <button type="button" class="tool-btn" onclick="document.getElementById('imageInput').click()">
+                📷 Фото
+            </button>
+            <button type="button" class="tool-btn" id="stickerBtn">
+                😊 Стикеры
+            </button>
+            <% if (user && (user.role === 'admin' || user.role === 'superadmin')) { %>
+            <label class="tool-btn moderator-btn">
+                <input type="checkbox" name="isModeratorPost" value="true" id="moderatorCheckbox">
+                ⭐ Опубликовать как модератор (закрепить)
+            </label>
+            <% } %>
+        </div>
+        
+        <!-- Скрытое поле для ссылки на фото -->
+        <input type="hidden" name="imageUrl" id="imageUrl" value="">
+        
+        <!-- Скрытое поле для стикера -->
+        <input type="hidden" name="sticker" id="sticker" value="">
+        
+        <!-- Скрытый input для загрузки фото -->
+        <input type="file" id="imageInput" style="display: none;" accept="image/*">
+        
+        <!-- Выбор стикеров -->
+        <div id="stickerPicker" class="sticker-picker" style="display: none;">
+            <div class="sticker-grid">
+                <div class="sticker" data-sticker="👍">👍</div>
+                <div class="sticker" data-sticker="❤️">❤️</div>
+                <div class="sticker" data-sticker="😂">😂</div>
+                <div class="sticker" data-sticker="😎">😎</div>
+                <div class="sticker" data-sticker="🔥">🔥</div>
+                <div class="sticker" data-sticker="🎉">🎉</div>
+                <div class="sticker" data-sticker="💪">💪</div>
+                <div class="sticker" data-sticker="👏">👏</div>
+                <div class="sticker" data-sticker="🙏">🙏</div>
+                <div class="sticker" data-sticker="⭐">⭐</div>
+                <div class="sticker" data-sticker="⚡">⚡</div>
+                <div class="sticker" data-sticker="🎯">🎯</div>
+                <div class="sticker" data-sticker="🏆">🏆</div>
+                <div class="sticker" data-sticker="💀">💀</div>
+                <div class="sticker" data-sticker="🤝">🤝</div>
+                <div class="sticker" data-sticker="✅">✅</div>
+                <div class="sticker" data-sticker="❌">❌</div>
+                <div class="sticker" data-sticker="⚠️">⚠️</div>
+            </div>
+        </div>
+        
+        <div class="post-actions">
+            <button type="submit">Опубликовать</button>
+        </div>
+    </form>
+</div>
+
+<style>
+.moderator-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    background: #8b3a3a;
+}
+
+.moderator-btn:hover {
+    background: #a14f4f;
+}
+
+.moderator-btn input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.post-toolbar {
+    display: flex;
+    gap: 10px;
+    margin: 10px 0;
+    flex-wrap: wrap;
+}
+
+.tool-btn {
+    background: #2c4a3a;
+    border: 1px solid #4a7c59;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.tool-btn:hover {
+    background: #4a7c59;
+}
+
+.image-preview {
+    position: relative;
+    margin: 10px 0;
+    display: inline-block;
+}
+
+.image-preview img {
+    max-width: 200px;
+    max-height: 150px;
+    border-radius: 8px;
+    border: 2px solid #4a7c59;
+}
+
+.remove-image {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: #8b3a3a;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 25px;
+    height: 25px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.sticker-picker {
+    background: #1e2f26;
+    border: 1px solid #4a7c59;
+    border-radius: 8px;
+    padding: 10px;
+    margin: 10px 0;
+    position: absolute;
+    z-index: 100;
+    width: 300px;
+}
+
+.sticker-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+}
+
+.sticker {
+    font-size: 28px;
+    text-align: center;
+    cursor: pointer;
+    padding: 5px;
+    transition: transform 0.2s;
+}
+
+.sticker:hover {
+    transform: scale(1.2);
+    background: #2c4a3a;
+    border-radius: 8px;
+}
+
+.post-actions {
+    margin-top: 10px;
+}
+
+.post-actions button {
+    margin-top: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #4a7c59;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.post-actions button:hover {
+    background: #5c9e6b;
+}
+</style>
+
+<script>
+    // Переменные
+    const imageInput = document.getElementById('imageInput');
+    const imagePreview = document.getElementById('imagePreview');
+    const previewImg = document.getElementById('previewImg');
+    const imageUrlField = document.getElementById('imageUrl');
+    const postContent = document.getElementById('postContent');
+    const stickerBtn = document.getElementById('stickerBtn');
+    const stickerPicker = document.getElementById('stickerPicker');
+    
+    // Загрузка фото
+    imageInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    const maxSize = 800;
+                    if (width > height && width > maxSize) {
+                        height = (height * maxSize) / width;
+                        width = maxSize;
+                    } else if (height > maxSize) {
+                        width = (width * maxSize) / height;
+                        height = maxSize;
+                    }
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                    previewImg.src = compressedDataUrl;
+                    imagePreview.style.display = 'block';
+                    imageUrlField.value = compressedDataUrl;
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+    
+    function removeImage() {
+        imagePreview.style.display = 'none';
+        previewImg.src = '';
+        imageUrlField.value = '';
+        imageInput.value = '';
+    }
+    
+    // Открытие/закрытие панели стикеров
+    stickerBtn.addEventListener('click', function() {
+        if (stickerPicker.style.display === 'none') {
+            stickerPicker.style.display = 'block';
+        } else {
+            stickerPicker.style.display = 'none';
+        }
+    });
+    
+    // Добавление стикера в текст
+    document.querySelectorAll('.sticker').forEach(sticker => {
+        sticker.addEventListener('click', function() {
+            const stickerValue = this.dataset.sticker;
+            const cursorPos = postContent.selectionStart;
+            const textBefore = postContent.value.substring(0, cursorPos);
+            const textAfter = postContent.value.substring(cursorPos);
+            postContent.value = textBefore + stickerValue + textAfter;
+            postContent.focus();
+            postContent.selectionStart = cursorPos + stickerValue.length;
+            postContent.selectionEnd = cursorPos + stickerValue.length;
+            stickerPicker.style.display = 'none';
+        });
+    });
+    
+    // Закрытие панели стикеров при клике вне её
+    document.addEventListener('click', function(e) {
+        if (!stickerBtn.contains(e.target) && !stickerPicker.contains(e.target)) {
+            stickerPicker.style.display = 'none';
+        }
+    });
+</script>

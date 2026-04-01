@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-консоль - ССО</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .console-container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+        
+        .password-screen {
+            background: rgba(30, 47, 38, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            max-width: 400px;
+            margin: 100px auto;
+            border: 1px solid #4a7c59;
+        }
+        
+        .password-screen h2 {
+            color: #8bc34a;
+            margin-bottom: 1rem;
+        }
+        
+        .password-screen input {
+            width: 100%;
+            padding: 10px;
+            background: #1a2f24;
+            border: 1px solid #4a7c59;
+            color: white;
+            border-radius: 8px;
+            margin: 1rem 0;
+            font-size: 16px;
+        }
+        
+        .password-screen button {
+            padding: 10px 20px;
+            background: #4a7c59;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        
+        .console-main {
+            background: rgba(30, 47, 38, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            border: 1px solid #4a7c59;
+            overflow: hidden;
+        }
+        
+        .console-header {
+            background: #2c4a3a;
+            padding: 12px 20px;
+            border-bottom: 1px solid #4a7c59;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .console-header h2 {
+            color: #8bc34a;
+            margin: 0;
+            font-size: 1.2rem;
+        }
+        
+        .console-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .console-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        .console-btn.shutdown {
+            background: #8b3a3a;
+            color: white;
+        }
+        
+        .console-btn.shutdown:hover {
+            background: #a14f4f;
+        }
+        
+        .console-btn.restart {
+            background: #3498db;
+            color: white;
+        }
+        
+        .console-btn.restart:hover {
+            background: #2980b9;
+        }
+        
+        .console-btn.clear {
+            background: #5a5a5a;
+            color: white;
+        }
+        
+        .console-output {
+            background: #0a1f15;
+            color: #8bc34a;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .console-input-area {
+            padding: 15px;
+            border-top: 1px solid #4a7c59;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .console-input-area input {
+            flex: 1;
+            padding: 10px;
+            background: #1a2f24;
+            border: 1px solid #4a7c59;
+            color: #8bc34a;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        
+        .console-input-area button {
+            padding: 10px 20px;
+            background: #4a7c59;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        
+        .error-message {
+            color: #ff8888;
+            margin-top: 10px;
+            text-align: center;
+        }
+        
+        .status-bar {
+            padding: 8px 15px;
+            background: #1a2f24;
+            border-top: 1px solid #4a7c59;
+            font-size: 12px;
+            color: #8a8a8a;
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/header', { user: admin }) %>
+    
+    <div class="console-container" id="consoleContainer">
+        <!-- Экран ввода пароля -->
+        <div id="passwordScreen" class="password-screen">
+            <h2>🔐 Доступ к админ-консоли</h2>
+            <p>Введите пароль для входа</p>
+            <input type="password" id="passwordInput" placeholder="Пароль">
+            <button onclick="checkPassword()">Войти</button>
+            <div id="passwordError" class="error-message" style="display: none;"></div>
+        </div>
+        
+        <!-- Основная консоль (скрыта изначально) -->
+        <div id="consoleMain" class="console-main" style="display: none;">
+            <div class="console-header">
+                <h2>🖥️ Админ-консоль ССО</h2>
+                <div class="console-actions">
+                    <button class="console-btn clear" onclick="clearLogs()">🧹 Очистить логи</button>
+                    <button class="console-btn restart" onclick="restartServer()">🔄 Перезагрузить сайт</button>
+                    <button class="console-btn shutdown" onclick="shutdownServer()">⏻ Выключить сайт</button>
+                </div>
+            </div>
+            <div class="console-output" id="consoleOutput">
+                <span style="color: #8bc34a;">[СИСТЕМА] Загрузка...</span>
+            </div>
+            <div class="console-input-area">
+                <input type="text" id="commandInput" placeholder="Введите команду... (например: node --version, npm list, dir)" onkeypress="handleKeyPress(event)">
+                <button onclick="executeCommand()">▶ Выполнить</button>
+            </div>
+            <div class="status-bar">
+                <span>🔒 Доступ: главный администратор</span>
+                <span id="serverStatus">🟢 Сервер работает</span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let logsUpdateInterval = null;
+        
+        // Проверка пароля
+        async function checkPassword() {
+            const password = document.getElementById('passwordInput').value;
+            const errorDiv = document.getElementById('passwordError');
+            
+            if (!password) {
+                errorDiv.textContent = 'Введите пароль';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            const response = await fetch('/admin/console/check-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: password })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                document.getElementById('passwordScreen').style.display = 'none';
+                document.getElementById('consoleMain').style.display = 'block';
+                startLogsUpdate();
+            } else {
+                errorDiv.textContent = result.error || 'Неверный пароль';
+                errorDiv.style.display = 'block';
+                document.getElementById('passwordInput').value = '';
+            }
+        }
+        
+        // Загрузка логов
+        async function loadLogs() {
+            try {
+                const response = await fetch('/admin/console/logs');
+                const data = await response.json();
+                const outputDiv = document.getElementById('consoleOutput');
+                if (outputDiv) {
+                    outputDiv.innerHTML = data.logs.map(log => escapeHtml(log)).join('').replace(/\n/g, '<br>');
+                    outputDiv.scrollTop = outputDiv.scrollHeight;
+                }
+            } catch (err) {
+                console.error('Ошибка загрузки логов:', err);
+            }
+        }
+        
+        function startLogsUpdate() {
+            loadLogs();
+            if (logsUpdateInterval) clearInterval(logsUpdateInterval);
+            logsUpdateInterval = setInterval(loadLogs, 2000);
+        }
+        
+        // Выполнение команды
+        async function executeCommand() {
+            const commandInput = document.getElementById('commandInput');
+            const command = commandInput.value.trim();
+            
+            if (!command) return;
+            
+            commandInput.value = '';
+            
+            const response = await fetch('/admin/console/command', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: command })
+            });
+            
+            const result = await response.json();
+            loadLogs();
+        }
+        
+        // Очистка логов
+        async function clearLogs() {
+            if (confirm('Очистить все логи?')) {
+                await fetch('/admin/console/clear-logs', { method: 'POST' });
+                loadLogs();
+            }
+        }
+        
+        // Перезагрузка сервера
+        async function restartServer() {
+            if (confirm('⚠️ ВНИМАНИЕ! Перезагрузка сайта займет несколько секунд. Все несохраненные данные будут потеряны. Продолжить?')) {
+                const response = await fetch('/admin/console/restart', { method: 'POST' });
+                const result = await response.json();
+                alert(result.message);
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            }
+        }
+        
+        // Выключение сервера
+        async function shutdownServer() {
+            if (confirm('⚠️ ВНИМАНИЕ! Сайт будет полностью остановлен. Для запуска потребуется перезапустить сервер вручную. Продолжить?')) {
+                const response = await fetch('/admin/console/shutdown', { method: 'POST' });
+                const result = await response.json();
+                alert(result.message);
+                document.getElementById('serverStatus').innerHTML = '🔴 Сервер выключается...';
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1500);
+            }
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                executeCommand();
+            }
+        }
+        
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

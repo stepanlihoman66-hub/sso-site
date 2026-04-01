@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Чат СРО "Туман" - ССО</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <%- include('partials/header', { user: user }) %>
+    
+    <div class="chat-container">
+        <div class="chat-header">
+            <span>🌫️ Чат СРО "Туман"</span>
+            <div class="chat-header-right">
+                <span id="status" class="status-offline">● Подключение...</span>
+            </div>
+        </div>
+        
+        <div class="chat-messages" id="messages">
+            <!-- Сообщения будут здесь -->
+        </div>
+        
+        <div class="chat-input-area">
+            <div class="chat-toolbar">
+                <button type="button" class="chat-tool-btn" id="imageBtn">📷 Фото</button>
+                <button type="button" class="chat-tool-btn" id="fileBtn">📎 Файл</button>
+            </div>
+            
+            <div id="replyPreview" class="reply-preview" style="display: none;">
+                <div class="reply-preview-content">
+                    <span>↩️ Ответ на сообщение:</span>
+                    <span id="replyText" class="reply-text"></span>
+                    <button type="button" class="remove-reply" onclick="cancelReply()">✖</button>
+                </div>
+            </div>
+            
+            <div class="chat-input-wrapper">
+                <textarea id="messageInput" placeholder="Введите сообщение... Используйте @ для упоминания" rows="2"></textarea>
+                <button id="sendButton">📤 Отправить</button>
+            </div>
+            
+            <div id="filePreview" class="file-preview" style="display: none;">
+                <div class="file-preview-content">
+                    <span id="fileName"></span>
+                    <button type="button" class="remove-file" onclick="removeFile()">✖</button>
+                </div>
+            </div>
+            
+            <input type="file" id="fileInput" style="display: none;">
+        </div>
+        
+        <!-- Список пользователей для упоминаний -->
+        <div id="mentionList" class="mention-list" style="display: none;"></div>
+    </div>
+    
+    <script>
+        // ============ ПЕРЕМЕННЫЕ ============
+        const socket = io('/tuman');
+        const messagesDiv = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const imageBtn = document.getElementById('imageBtn');
+        const fileBtn = document.getElementById('fileBtn');
+        const fileInput = document.getElementById('fileInput');
+        const filePreview = document.getElementById('filePreview');
+        const fileNameSpan = document.getElementById('fileName');
+        const statusSpan = document.getElementById('status');
+        const mentionList = document.getElementById('mentionList');
+        const replyPreview = document.getElementById('replyPreview');
+        const replyText = document.getElementById('replyText');
+        
+        let pendingFile = null;
+        let pendingFileName = null;
+        let pendingFileType = null;
+        let currentUserId = parseInt('<%= user.id %>');
+        let currentUserCallsign = '<%= user.callsign %>';
+        let isAdmin = <%= (user.role === 'admin' || user.role === 'superadmin') %>;
+        let usersList = [];
+        let currentReplyTo = null;
+        
+        // ============ ЗАГРУЗКА ПОЛЬЗОВАТЕЛЕЙ ============
+        async function loadUsers() {
+            try {
+                let response = await fetch('/api/users');
+                usersList = await response.json();
+            } catch(e) { console.error(e); }
+        }
+        
+        // ============ УПОМИНАНИЯ ============
+        function handleMentions(input) {
+            let cursorPos = input.selectionStart;
+            let text = input.value;
+            let beforeCursor = text.substring(0, cursorPos);
+            let lastAt = beforeCursor.lastIndexOf('@');
+            
+            if (lastAt !== -1 && (lastAt === 0 || text[lastAt - 1] === ' ' || text[lastAt - 1] === '\n')) {
+                let searchTerm = beforeCursor.substring(lastAt + 1);
+                let filteredUsers = [];
+                for (let i = 0; i < usersList.length; i++) {
+                    if (usersList[i].id !== currentUserId && usersList[i].callsign.toLowerCase().indexOf(searchTerm.toLowerCase()) !== -1) {
+                        filteredUsers.push(usersList[i]);
+                    }
+                }
+                
+                if (filteredUsers.length > 0 && searchTerm.length > 0) {
+                    mentionList.innerHTML = '';
+                    for (let i = 0; i < filteredUsers.length; i++) {
+                        let u = filteredUsers[i];
+                        let div = document.createElement('div');
+                        div.className = 'mention-item';
+                        div.setAttribute('data-id', u.id);
+                        div.setAttribute('data-name', u.callsign);
+                        div.innerHTML = u.unitPrefix + ' | "' + u.callsign + '"';
+                        div.onclick = (function(userId, userName) {
+                            return function() {
+                                let newText = text.substring(0, lastAt) + '@' + userName + ' ' + text.substring(cursorPos);
+                                input.value = newText;
+                                mentionList.style.display = 'none';
+                                input.focus();
+                            };
+                        })(u.id, u.callsign);
+                        mentionList.appendChild(div);
+                    }
+                    mentionList.style.display = 'block';
+                    let rect = input.getBoundingClientRect();
+                    mentionList.style.left = rect.left + 10 + 'px';
+                    mentionList.style.bottom = (window.innerHeight - rect.bottom + 10) + 'px';
+                    return;
+                }
+            }
+            mentionList.style.display = 'none';
+        }
+        
+        messageInput.addEventListener('input', function() { handleMentions(messageInput); });
+        messageInput.addEventListener('keydown', function() { handleMentions(messageInput); });
+        
+        document.addEventListener('click', function(e) {
+            if (mentionList && !mentionList.contains(e.target) && e.target !== messageInput) {
+                mentionList.style.display = 'none';
+            }
+        });
+        
+        // ============ ОТВЕТЫ ============
+        window.replyToMessage = function(msg) {
+            currentReplyTo = msg;
+            replyText.innerText = msg.User.callsign + ': ' + (msg.content.substring(0, 50) || '[медиа]');
+            replyPreview.style.display = 'block';
+            messageInput.focus();
+        };
+        
+        window.cancelReply = function() {
+            currentReplyTo = null;
+            replyPreview.style.display = 'none';
+        };
+        
+        function getMentionsFromText(text) {
+            let mentions = [];
+            let regex = /@([^\s]+)/g;
+            let match;
+            while ((match = regex.exec(text)) !== null) {
+                for (let i = 0; i < usersList.length; i++) {
+                    if (usersList[i].callsign === match[1]) {
+                        mentions.push(usersList[i].id);
+                        break;
+                    }
+                }
+            }
+            return mentions;
+        }
+        
+        // ============ ОТПРАВКА СООБЩЕНИЙ ============
+        function sendMessageWithOptions() {
+            let message = messageInput.value.trim();
+            if (!message && !pendingFile) return;
+            
+            let mentions = getMentionsFromText(message);
+            
+            if (pendingFile) {
+                if (pendingFileType === 'image') {
+                    socket.emit('send image', { 
+                        message: message, 
+                        imageUrl: pendingFile,
+                        replyToId: currentReplyTo ? currentReplyTo.id : null,
+                        mentions: JSON.stringify(mentions)
+                    });
+                } else {
+                    socket.emit('send file', { 
+                        message: message, 
+                        fileUrl: pendingFile,
+                        fileName: pendingFileName,
+                        replyToId: currentReplyTo ? currentReplyTo.id : null,
+                        mentions: JSON.stringify(mentions)
+                    });
+                }
+                removeFile();
+            } else if (message) {
+                socket.emit('send message', { 
+                    message: message,
+                    replyToId: currentReplyTo ? currentReplyTo.id : null,
+                    mentions: JSON.stringify(mentions)
+                });
+            }
+            
+            messageInput.value = '';
+            cancelReply();
+        }
+        
+        // ============ ДОБАВЛЕНИЕ СООБЩЕНИЯ ============
+        function addMessage(msg) {
+            let messageElement = document.createElement('div');
+            messageElement.className = 'chat-message';
+            messageElement.setAttribute('data-message-id', msg.id);
+            
+            let mediaHtml = '';
+            if (msg.imageUrl) {
+                mediaHtml = '<div class="message-image"><img src="' + msg.imageUrl + '" alt="image" onclick="window.open(this.src)"></div>';
+            }
+            if (msg.fileUrl) {
+                mediaHtml = '<div class="message-file"><a href="' + msg.fileUrl + '" download="' + (msg.fileName || 'file') + '" target="_blank">📎 ' + (msg.fileName || 'Файл') + '</a></div>';
+            }
+            
+            let canDelete = (currentUserId === msg.User.id) || isAdmin;
+            let deleteButton = canDelete ? '<button class="delete-message" data-id="' + msg.id + '">🗑️</button>' : '';
+            
+            let replyHtml = '';
+            if (msg.ReplyTo) {
+                replyHtml = '<div class="message-reply">↩️ Ответ: <span class="reply-author">' + msg.ReplyTo.User.callsign + ':</span> ' + (msg.ReplyTo.content || '[медиа]').substring(0, 50) + '</div>';
+            }
+            
+            messageElement.innerHTML = 
+                '<img src="' + msg.User.avatar + '" alt="avatar" class="avatar-tiny">' +
+                '<div class="message-content">' +
+                    '<div class="message-header">' +
+                        '<a href="/profile/' + msg.User.id + '" class="message-author">' +
+                            msg.User.unitPrefix + ' | "' + msg.User.callsign + '"' +
+                        '</a>' +
+                        '<span class="message-date">' + new Date(msg.createdAt).toLocaleString() + '</span>' +
+                        '<button class="reply-btn" onclick="replyToMessage(' + JSON.stringify(msg).replace(/"/g, '&quot;') + ')">↩️</button>' +
+                        deleteButton +
+                    '</div>' +
+                    replyHtml +
+                    '<div class="message-text">' + escapeHtml(msg.content) + '</div>' +
+                    mediaHtml +
+                '</div>';
+            
+            messagesDiv.appendChild(messageElement);
+            
+            if (canDelete) {
+                let deleteBtn = messageElement.querySelector('.delete-message');
+                deleteBtn.addEventListener('click', function() {
+                    if (confirm('Удалить сообщение?')) {
+                        socket.emit('delete message', { messageId: msg.id });
+                    }
+                });
+            }
+            
+            scrollToBottom();
+        }
+        
+        // ============ СОКЕТ СОБЫТИЯ ============
+        socket.on('connect', function() {
+            statusSpan.innerHTML = '● Подключено';
+            statusSpan.className = 'status-online';
+            console.log('Подключено к чату СРО "Туман"');
+        });
+        
+        socket.on('disconnect', function() {
+            statusSpan.innerHTML = '● Отключено';
+            statusSpan.className = 'status-offline';
+            console.log('Отключено от чата СРО "Туман"');
+        });
+        
+        socket.on('load messages', function(messages) {
+            messagesDiv.innerHTML = '';
+            for (let i = 0; i < messages.length; i++) {
+                addMessage(messages[i]);
+            }
+            scrollToBottom();
+        });
+        
+        socket.on('new message', function(msg) {
+            addMessage(msg);
+            scrollToBottom();
+        });
+        
+        socket.on('message deleted', function(data) {
+            let el = document.querySelector('.chat-message[data-message-id="' + data.messageId + '"]');
+            if (el) el.remove();
+        });
+        
+        // ============ ФАЙЛЫ ============
+        function removeFile() {
+            filePreview.style.display = 'none';
+            pendingFile = null;
+            pendingFileName = null;
+        }
+        
+        imageBtn.addEventListener('click', function() {
+            fileInput.accept = 'image/*';
+            fileInput.click();
+            pendingFileType = 'image';
+        });
+        
+        fileBtn.addEventListener('click', function() {
+            fileInput.accept = '*/*';
+            fileInput.click();
+            pendingFileType = 'file';
+        });
+        
+        fileInput.addEventListener('change', function(e) {
+            let file = e.target.files[0];
+            if (!file) return;
+            
+            let reader = new FileReader();
+            reader.onload = function(event) {
+                let fileDataUrl = event.target.result;
+                if (pendingFileType === 'image') {
+                    fileNameSpan.innerHTML = '📷 ' + file.name;
+                    filePreview.style.display = 'block';
+                    pendingFile = fileDataUrl;
+                    pendingFileName = file.name;
+                } else {
+                    fileNameSpan.innerHTML = '📎 ' + file.name;
+                    filePreview.style.display = 'block';
+                    pendingFile = fileDataUrl;
+                    pendingFileName = file.name;
+                }
+            };
+            reader.readAsDataURL(file);
+            fileInput.value = '';
+        });
+        
+        window.removeFile = removeFile;
+        
+        function sendWithAttachment() {
+            sendMessageWithOptions();
+        }
+        
+        function escapeHtml(text) {
+            if (!text) return '';
+            let div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function scrollToBottom() {
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        sendButton.addEventListener('click', sendWithAttachment);
+        messageInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendWithAttachment();
+            }
+        });
+        
+        // ============ ИНИЦИАЛИЗАЦИЯ ============
+        loadUsers();
+        messageInput.focus();
+    </script>
+</body>
+</html>

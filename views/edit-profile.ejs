@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Редактирование профиля - ССО</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <%- include('partials/header') %>
+    
+    <div class="edit-profile-container">
+        <div class="edit-profile-card">
+            <h1>Редактирование профиля</h1>
+            
+            <form action="/profile/edit" method="POST">
+                <div class="form-group">
+                    <label for="callsign">Позывной:</label>
+                    <input type="text" name="callsign" id="callsign" value="<%= user.callsign %>" required>
+                    <small>Ваш позывной будет отображаться как: ССО | "Позывной"</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="avatar">Ссылка на аватар:</label>
+                    <input type="url" name="avatar" id="avatar" value="<%= user.avatar %>">
+                    <small>Вставьте прямую ссылку на изображение (например, с imgur.com)</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="personalFileUrl">Ссылка на личное дело:</label>
+                    <input type="url" name="personalFileUrl" id="personalFileUrl" value="<%= user.personalFileUrl %>">
+                </div>
+                
+                <div class="form-buttons">
+                    <button type="submit">Сохранить изменения</button>
+                    <a href="/profile/<%= user.id %>" class="btn-cancel">Отмена</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= profileUser.unitPrefix %> | "<%= profileUser.callsign %>" - Профиль</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <%- include('partials/header', { user: currentUser }) %>
+    
+    <div class="profile-container">
+        <div class="profile-header">
+            <img src="<%= profileUser.avatar %>" alt="avatar" class="avatar-large">
+            <h1><%= profileUser.unitPrefix %> | "<%= profileUser.callsign %>"</h1>
+            <p>Discord: <%= profileUser.username %></p>
+            
+            <% if (profileUser.personalFileUrl) { %>
+            <a href="<%= profileUser.personalFileUrl %>" target="_blank" class="btn-file">
+                📄 Посмотреть личное дело бойца
+            </a>
+            <% } %>
+            
+            <% if (currentUser && currentUser.id === profileUser.id) { %>
+            <a href="/profile/edit" class="btn-edit">✏️ Редактировать профиль</a>
+            <% } %>
+            
+            <% if (currentUser && currentUser.id !== profileUser.id) { %>
+            <button onclick="startPrivateChat(<%= profileUser.id %>, '<%= profileUser.callsign %>')" class="btn-message">
+                💬 Написать
+            </button>
+            <% } %>
+        </div>
+        
+        <div class="profile-posts">
+            <h2>Посты бойца</h2>
+            <% posts.forEach(function(post) { %>
+            <div class="post">
+                <div class="post-date">
+                    <%= new Date(post.createdAt).toLocaleString() %>
+                </div>
+                <div class="post-content">
+                    <%= post.content %>
+                </div>
+                <% if (post.imageUrl) { %>
+                    <img src="<%= post.imageUrl %>" class="post-image" style="max-width: 100%; max-height: 300px; margin-top: 10px;">
+                <% } %>
+            </div>
+            <% }) %>
+            
+            <% if (posts.length === 0) { %>
+            <p class="no-posts">У бойца пока нет постов</p>
+            <% } %>
+        </div>
+    </div>
+    
+    <script>
+        function startPrivateChat(userId, callsign) {
+            // Открываем модальное окно личных сообщений
+            openPrivateChat(userId, callsign);
+        }
+        
+        function openPrivateChat(userId, callsign) {
+            // Создаем или открываем существующее окно чата
+            window.location.href = '/chat?private=' + userId;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ССО - Главная</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <%- include('partials/header', { user: user }) %>
+    
+    <div class="container">
+        <div class="main-content">
+            <% if (user && !user.isBanned) { %>
+                <%- include('post-form') %>
+            <% } else if (user && user.isBanned) { %>
+                <div class="banned-message">
+                    ⚠️ ВЫ ЗАБАНЕНЫ НА САЙТЕ ⚠️
+                </div>
+            <% } %>
+            
+            <div class="posts-feed">
+                <h2>Лента новостей</h2>
+                <% posts.forEach(post => { %>
+                <div class="post <%= post.isPinned ? 'is-pinned' : '' %>" data-post-id="<%= post.id %>">
+                    <div class="post-header">
+                        <% if (post.isPinned) { %>
+                            <span class="pinned-badge">📌 ЗАКРЕПЛЕНО</span>
+                        <% } %>
+                        <% if (post.isModeratorPost) { %>
+                            <span class="moderator-badge">⭐ Модератор</span>
+                        <% } %>
+                        <img src="<%= post.User.avatar %>" alt="avatar" class="avatar-small">
+                        <div class="post-author">
+                            <a href="/profile/<%= post.User.id %>">
+                                <%= post.User.unitPrefix %> | "<%= post.User.callsign %>"
+                            </a>
+                        </div>
+                        <div class="post-date">
+                            <%= new Date(post.createdAt).toLocaleString() %>
+                        </div>
+                        <% if (user && (user.role === 'admin' || user.role === 'superadmin' || user.id === post.User.id)) { %>
+                        <button class="delete-post" data-id="<%= post.id %>">🗑️</button>
+                        <% } %>
+                    </div>
+                    <div class="post-content-wrapper">
+                        <% if (post.sticker) { %>
+                            <div class="post-sticker"><%= post.sticker %></div>
+                        <% } %>
+                        <div class="post-text">
+                            <div class="post-content"><%= post.content %></div>
+                            <% if (post.imageUrl) { %>
+                                <img src="<%= post.imageUrl %>" alt="post image" class="post-image">
+                            <% } %>
+                        </div>
+                    </div>
+                </div>
+                <% }) %>
+                
+                <% if (posts.length === 0) { %>
+                <div class="no-posts">
+                    <p>Нет постов. Напишите что-нибудь!</p>
+                </div>
+                <% } %>
+            </div>
+        </div>
+        
+        <div class="sidebar">
+            <div class="appeal-button">
+                <button onclick="location.href='/appeals/create'" class="btn-appeal">
+                    📝 Анонимное обращение к командиру
+                </button>
+            </div>
+            
+            <div class="chat-link">
+                <button onclick="location.href='/chat'" class="btn-chat">
+                    💬 Перейти в чат
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.querySelectorAll('.delete-post').forEach(button => {
+            button.addEventListener('click', async (e) => {
+                if (confirm('Удалить пост?')) {
+                    const postId = button.dataset.id;
+                    const response = await fetch(`/posts/${postId}`, {
+                        method: 'DELETE'
+                    });
+                    if (response.ok) {
+                        button.closest('.post').remove();
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>

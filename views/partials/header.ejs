@@ -1,0 +1,84 @@
+<header class="header">
+    <div class="header-container">
+        <div class="logo">
+            <a href="/">
+                <img src="/images/logo.png" alt="Логотип" class="logo-img">
+                <span class="logo-text">ССО РФ</span>
+            </a>
+        </div>
+        
+        <nav class="nav">
+            <a href="/">Главная</a>
+            <a href="/chat">Чат</a>
+            <% if (typeof user !== 'undefined' && user && user.id) { %>
+                <a href="/profile/<%= user.id %>">Мой профиль</a>
+                <% if (user.role === 'admin' || user.role === 'superadmin') { %>
+                    <a href="/admin">Админ-панель</a>
+                    <a href="/appeals">Обращения</a>
+                <% } %>
+                <a href="/auth/logout">Выход</a>
+            <% } else { %>
+                <a href="/auth/discord" class="btn-login">Войти через Discord</a>
+            <% } %>
+        </nav>
+        
+        <div class="user-info">
+            <% if (typeof user !== 'undefined' && user && user.id) { %>
+                <img src="<%= user.avatar %>" alt="avatar" class="avatar-mini">
+                <span class="user-name"><%= user.unitPrefix %> | "<%= user.callsign %>"</span>
+                
+                <!-- Выпадающее меню для дополнительных чатов -->
+                <div class="dropdown">
+                    <button class="dropdown-btn">▼</button>
+                    <div class="dropdown-content">
+                        <% if (user.role === 'sro_tuman' || user.role === 'admin' || user.role === 'superadmin') { %>
+                            <a href="/chat-tuman">🌫️ Чат СРО "Туман"</a>
+                        <% } %>
+                    </div>
+                </div>
+            <% } %>
+        </div>
+    </div>
+</header>
+
+<style>
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-btn {
+    background: none;
+    border: none;
+    color: #555;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0 5px;
+}
+
+.dropdown-content {
+    display: none;
+    position: absolute;
+    right: 0;
+    background-color: #f9f9f9;
+    min-width: 160px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    z-index: 1;
+    border-radius: 4px;
+}
+
+.dropdown-content a {
+    color: #333;
+    padding: 12px 16px;
+    text-decoration: none;
+    display: block;
+}
+
+.dropdown-content a:hover {
+    background-color: #f1f1f1;
+}
+
+.dropdown:hover .dropdown-content {
+    display: block;
+}
+</style>
